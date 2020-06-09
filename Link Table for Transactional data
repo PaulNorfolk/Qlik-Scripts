@@ -3,7 +3,6 @@
 // Note: The three tables were already loaded in above this table (with a TransactionsKey), so I am doing resident loads.
 // Also not all data sources had the same field names hence some renaming e.g. CC as Cost Centre.
 
-```sql
 LinkTable:
 Load DISTINCT
     YEAR&'.'&PERIOD&'.'&CODE&'.'&COST_CENTRE as TransactionsKey,
@@ -12,7 +11,7 @@ Load DISTINCT
     CODE,
     COST_CENTRE
     Resident Table1;
-```
+
 Concatenate(LinkTable)
 LOAD DISTINCT
     "YEAR"&'.'&PERIOD&'.'&"CODE"&'.'&CC as TransactionsKey, 
@@ -30,10 +29,3 @@ LOAD DISTINCT
     ACCOUNT as CODE,
     COST_CENTRE
     Resident Table3;
-    
-    
-    ```ruby
-require 'redcarpet'
-markdown = Redcarpet.new("Hello World!")
-puts markdown.to_html
-```
