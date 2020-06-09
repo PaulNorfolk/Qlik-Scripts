@@ -1,2 +1,2 @@
 # Qlik-Scripts
-Repository for Anonymised Qlik Scripts
+Repository for Qlik Scripts
