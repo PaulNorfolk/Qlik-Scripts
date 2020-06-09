@@ -18,7 +18,7 @@ LOAD DISTINCT
     PERIOD,
     YEAR, 
     CC as COST_CENTRE,
-    REPORTING_OUC as SC_CC_BASE_LEVEL
+    CODE
     Resident Table2;
 
 Concatenate(LinkTable)
