@@ -1,0 +1,39 @@
+// In this app there is transactions coming from 3 source systems that we need to join in the data model to pull all the transaction in together. 
+// The below script creates a link table between that creates keys for all combinations of Year, Period, Code and Cost Centre. 
+// Note: The three tables were already loaded in above this table (with a TransactionsKey), so I am doing resident loads.
+// Also not all data sources had the same field names hence some renaming e.g. CC as Cost Centre.
+
+```sql
+LinkTable:
+Load DISTINCT
+    YEAR&'.'&PERIOD&'.'&CODE&'.'&COST_CENTRE as TransactionsKey,
+    YEAR,
+    PERIOD,
+    CODE,
+    COST_CENTRE
+    Resident Table1;
+```
+Concatenate(LinkTable)
+LOAD DISTINCT
+    "YEAR"&'.'&PERIOD&'.'&"CODE"&'.'&CC as TransactionsKey, 
+    PERIOD,
+    YEAR, 
+    CC as COST_CENTRE,
+    REPORTING_OUC as SC_CC_BASE_LEVEL
+    Resident Table2;
+
+Concatenate(LinkTable)
+LOAD DISTINCT
+    "YEAR"&'.'&PERIOD_NAME&'.'&ACCOUNT&'.'&COST_CENTRE as TransactionsKey, 
+    PERIOD_NAME as PERIOD,
+    YEAR, 
+    ACCOUNT as CODE,
+    COST_CENTRE
+    Resident Table3;
+    
+    
+    ```ruby
+require 'redcarpet'
+markdown = Redcarpet.new("Hello World!")
+puts markdown.to_html
+```
