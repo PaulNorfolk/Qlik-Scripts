@@ -1,0 +1,616 @@
+/****************************************************************
+SUB clsp_FinanceReport
+
+The below code is required when using the 'Vizlib Finance Report Extension'.
+An excel is created and loaded in which can give instructions to Qlik on how to format the table such as creating subtotal rows, 
+creating various sections of the table that allow drill-down and other more complex formatting that can't be created natively in the Qlik app.
+This script creates a function, and then at the bottom calls the function on the excel file. 
+Please update the filepath and filename at the bottom of this script with your filepath and filename. 
+
+Any questions, please contact Hiten Parmer or Paul Norfolk.
+
+This sub-routine will vastly simplify the use of the Finance Report extension. 
+The extension will work also with any other load script but please study the section in the readme-file for specifics on how to set up the data.
+*****************************************************************/
+
+SUB clsp_FinanceReport
+
+TRACE ****** clsp_FinanceReport ********;
+
+      //File path and File name. Defined in clsp_FinanceReport_Options
+      LET vL.FilePath=PEEK('clsp_FilePath');
+      LET vL.FileName=PEEK('clsp_FileName');
+
+DROP TABLE clsp_FinanceReport_Options;
+
+TRACE ******Variables for Export *******;
+//Variables for the export format. Used in the property panel as a default option. 
+//Typically the export format is the same as the table format but that can be changed in the Excel-settings
+//Cofigure this setting in 'Export Number Formats' in the extension. 
+//It is also possible to manually set another format in the extension setting if one instance of the extension should have a different format.
+
+  	  variablesForExport:
+      LOAD 
+          RowNumExportFormatCode
+      FROM [$(vL.FilePath)/$(vL.FileName)]
+      (ooxml, embedded labels, table is tNumFormat)
+      
+      ;
+      
+FOR vExportFormat = 1 to NoOfRows('variablesForExport')
+   
+   	  IF LEN($(vExportFormat))=1 THEN
+      LET vExportNumber= 0&$(vExportFormat);
+      ELSE
+      LET vExportNumber =$(vExportFormat);
+      END IF
+
+      LET vCLFRExportFormat$(vExportNumber) = PEEK('RowNumExportFormatCode',vExportFormat-1,'variablesForExport');
+
+
+NEXT vExportFormat
+
+
+DROP TABLE variablesForExport;
+
+TRACE ****** Read Excel Options *******;
+
+      //Options defined in excel file  
+	  clsp_FinanceOptions:  
+      LOAD DISTINCT
+          Sheet,
+          TransactionTable,
+          AccountField,
+          ExtraGroups,
+          ExtraMappingIntervals
+      FROM [$(vL.FilePath)/$(vL.FileName)]
+      (ooxml, embedded labels, header is 1 lines, table is Options)
+      where Len(trim(Sheet))>0
+      //AND Sheet='OH'
+      ; //Making sure no invalid rows are loaded
+
+
+
+//Starting the loop for each finance report
+
+FOR clsp_FinceReportRow = 0 TO NoOfRows('clsp_FinanceOptions')-1;
+
+let clsp_FinanceReportNoOfSetups=NoOfRows('clsp_FinanceOptions'); //Used only for the trace below
+let clsp_FinanceReportNowLoadingSetup=$(clsp_FinceReportRow)+1; //Used only for the trace below
+TRACE '****** Loading $(clsp_FinanceReportNowLoadingSetup) of $(clsp_FinanceReportNoOfSetups) Finance Report setups ******';
+
+//Varibles for the finance report
+LET vL.SheetName= PEEK('Sheet',$(clsp_FinceReportRow),'clsp_FinanceOptions');
+LET vL.TransactionTable= PEEK('TransactionTable',$(clsp_FinceReportRow),'clsp_FinanceOptions'); //Name of the transaction table
+LET vL.AccountField= PEEK('AccountField',$(clsp_FinceReportRow),'clsp_FinanceOptions'); //Field name for the account key
+LET vL.ExtraGroups= PEEK('ExtraGroups',$(clsp_FinceReportRow),'clsp_FinanceOptions'); //Extra groups name
+LET vL.ExtraMappingIntervals= PEEK('ExtraMappingIntervals',$(clsp_FinceReportRow),'clsp_FinanceOptions'); //Used e.g for cost center
+
+//If no Extra mapping field, set variable, used later 
+IF LEN('$(vL.ExtraMappingIntervals)')<1 THEN
+LET vL.ExtraMappingIntervals='NOEXTRAFIELD';
+END IF
+
+
+
+TRACE ****** Import Data from Excel *******;
+
+
+      clsp_importData_$(vL.SheetName):
+      LOAD 
+      	*,
+       DUAL([tmpReportRow], 
+       		//Building dual value for the report row (Details described on each row below.)
+       		([%ReportRowID]* 100000) + 							//Set report row number can be anything from 1 to infinity
+            ([RowNumExportFormatCode]*1000)+					//Set the export format from 1 to 99.
+            ([StyleNum] * 10)+									//Style is from 0 to 99
+            [preventExpand]) 					AS [reportRow]	//Should always be either 1 or 0 (1 prevents expand)
+      
+      ;
+      
+      LOAD
+        //Grain=====================================================================================
+        *,
+        [RowNumber]								AS [%ReportRowID],
+        //Dimension=================================================================================
+		IF([RowType]='EmptyRow',
+        	IF(ISNULL([ReportRow]),
+        	' ',
+            [ReportRow]),
+            [ReportRow])						AS [tmpReportRow],
+        IF([PreventExpand]=1,
+        	0,
+        	1)									AS [preventExpand],
+        IF([RowType]='EmptyRow',2,
+        	IF(ISNULL([Calculation]),
+            1,
+        Calculation))							AS [calculation],
+	  	1										AS [NOEXTRAFIELD]
+        //Measure===================================================================================
+      FROM [$(vL.FilePath)/$(vL.FileName)]
+      (ooxml, embedded labels, table is $(vL.SheetName))
+     where Len(trim(RowNumber))>0; //Rows without a row number are excluded to avoid loading incomplete rows
+     
+
+//Used later in the logic for subtotals etc.
+LET vL.MinRowNumber = PEEK('%ReportRowID',0);
+LET vL.MaxRowNumber = PEEK('%ReportRowID',-1);
+
+     
+DROP FIELD tmpReportRow, preventExpand,ReportRow,Calculation;
+DROP FIELDS $(vL.ExtraGroups);
+
+IF len(vL.ExtraGroups)>0 THEN
+
+TRACE ****** Extra Groups ******;
+
+//1. Get numeric value for each Report Row
+//The reportRow is the most granular level of the report
+      map_ReportRowNumericValue_$(vL.SheetName):
+      MAPPING 
+      LOAD 
+          TEXT(reportRow) 																			AS reportRow,
+          NUM(reportRow) 																			AS reportRowNumeric
+      RESIDENT clsp_importData_$(vL.SheetName)
+      ;
+
+//Looping through any extra groups (columns) specified in the Excel-file.
+FOR EACH vL.ExtraColumn in $(vL.ExtraGroups)
+
+//2. Get min row number for each extra grouping
+//NOTE! The extra colmns need to be an aggregatation of the rows!
+      map_MinRowGroupNumeric_$(vL.SheetName):
+      MAPPING 
+      LOAD 
+          TEXT($(vL.ExtraColumn)) 									 								AS $(vL.ExtraColumn),
+          MIN(APPLYMAP('map_ReportRowNumericValue_$(vL.SheetName)',TEXT(ReportRow))) 								AS MinRowGroupNumeric
+
+      FROM [$(vL.FilePath)/$(vL.FileName)]
+      (ooxml, embedded labels, table is $(vL.SheetName))
+      WHERE Len(Trim(RowNumber))>0
+      GROUP BY $(vL.ExtraColumn)
+      ;
+
+      
+//3. Add extra columns to the data model
+//NOTE! The extra colmns need to be an aggregatation of the rows!
+      LEFT JOIN(clsp_importData_$(vL.SheetName))
+      LOAD
+		  RowNumber,
+          DUAL(TEXT(ReportRow),APPLYMAP('map_ReportRowNumericValue_$(vL.SheetName)',TEXT(ReportRow))) 				AS reportRow,
+          DUAL(TEXT($(vL.ExtraColumn)),APPLYMAP('map_MinRowGroupNumeric_$(vL.SheetName)',TEXT($(vL.ExtraColumn))))  AS $(vL.ExtraColumn)
+      FROM [$(vL.FilePath)/$(vL.FileName)]
+      (ooxml, embedded labels, table is $(vL.SheetName))
+      WHERE Len(Trim(RowNumber))>0
+      ;
+
+NEXT vL.ExtraColumn
+
+ELSE
+TRACE ****** No Extra Groups Used ******;
+ENDIF
+
+TRACE ***** Regular Rows ******;
+
+      clsp_$(vL.SheetName):
+      LOAD
+         *,
+         IF(ISTEXT([accountFrom]),1,0) 			AS [isText],
+      ;
+      LOAD DISTINCT 
+        //Grain=====================================================================================
+        [%ReportRowID],
+        //Dimension=================================================================================
+        [%ReportRowID]							AS [rowNumber],
+        IF(INDEX([accounts],'-')>0,								//Identifying intervals
+            SUBFIELD([accounts],'-',1),							
+                [accounts])						AS [accountFrom],
+
+        IF(INDEX([accounts],'-')>0,
+             SUBFIELD([accounts],'-',2),
+                [accounts])						AS [accountTo],
+		ExtraIntervall			    			AS  ExtraIntervallMapping,
+       
+        //Measure===================================================================================
+        ;
+        LOAD 
+        [%ReportRowID]							AS [%ReportRowID],
+        
+        $(vL.ExtraMappingIntervals)				AS ExtraIntervall,
+        SUBFIELD([Accounts], ',') 				AS [accounts] //Creating one new row per account or account interval in the list
+       RESIDENT clsp_importData_$(vL.SheetName)
+       WHERE [RowType]='Regular'
+       ORDER BY [%ReportRowID]
+       ;
+
+       tmp_AccountsWithText:
+       LOAD
+       [%ReportRowID]		   			  AS [%ReportRowID],
+       [rowNumber]			   			  AS [rowNumber],
+       [accountFrom]           			  AS $(vL.AccountField),
+       ExtraIntervallMapping 			  AS ExtraIntervallMapping
+       RESIDENT clsp_$(vL.SheetName)
+       WHERE [isText]=1
+       ;
+       
+//Matching the account intervals
+//Only accounts that are also in the transaction table will be included so make sure the transaction table is complete
+//(i.e. the transaction table must include any budgets, forecasts etc before this script is run.)
+       INNER JOIN(clsp_$(vL.SheetName))
+       cl_IntervalTable:
+       INTERVALMATCH($(vL.AccountField))
+       LOAD
+       [accountFrom],
+       [accountTo]
+       RESIDENT clsp_$(vL.SheetName)
+       WHERE [isText]=0
+       ORDER BY [%ReportRowID]
+       ;
+
+//Adding non-numeric accounts (since they cannot be matched by the interval match)
+       CONCATENATE(clsp_$(vL.SheetName))
+       LOAD
+       [%ReportRowID],
+       [rowNumber],
+       $(vL.AccountField),
+       ExtraIntervallMapping
+       RESIDENT tmp_AccountsWithText
+       ;
+
+DROP TABLE tmp_AccountsWithText;
+
+DROP FIELDS [accountFrom], [accountTo], [isText];
+
+//This part is only run if we have an extra field for matching intervals
+//(i.e. if more than accounts are used for mapping report rows to the transactions)
+//The section will use the combination of account intervals and the extra intervals.
+IF '$(vL.ExtraMappingIntervals)'<>'NOEXTRAFIELD'  THEN
+
+TRACE ***** ExtraMappingIntervals ******;
+
+      clsp_$(vL.SheetName)_costcenters_interval:
+      LOAD
+         *,
+         IF(ISTEXT($(vL.ExtraMappingIntervals)From),1,0) 	AS [isText]
+      ;
+      LOAD DISTINCT 
+        //Grain=====================================================================================
+        //Dimension=================================================================================
+        IF(INDEX($(vL.ExtraMappingIntervals)Mapping,'-')>0,
+            SUBFIELD($(vL.ExtraMappingIntervals)Mapping,'-',1),
+                $(vL.ExtraMappingIntervals)Mapping)		AS $(vL.ExtraMappingIntervals)From,
+
+        IF(INDEX($(vL.ExtraMappingIntervals)Mapping,'-')>0,
+             SUBFIELD($(vL.ExtraMappingIntervals)Mapping,'-',2),
+                $(vL.ExtraMappingIntervals)Mapping)		AS $(vL.ExtraMappingIntervals)To,
+        $(vL.ExtraMappingIntervals)Mapping,
+        $(vL.AccountField),
+        [%ReportRowID],
+        //Measure===================================================================================
+        ;
+        LOAD
+        [%ReportRowID],
+        TRIM(SUBFIELD(ExtraIntervallMapping, ','))  AS $(vL.ExtraMappingIntervals)Mapping,
+        $(vL.AccountField)						  AS $(vL.AccountField)
+       RESIDENT clsp_$(vL.SheetName)
+       ;
+       
+DROP FIELD $(vL.ExtraMappingIntervals)Mapping FROM clsp_$(vL.SheetName);
+
+DROP FIELD $(vL.ExtraMappingIntervals) FROM clsp_importData_$(vL.SheetName) ;
+
+      clsp_$(vL.SheetName)_costcenters:
+      LOAD 
+         $(vL.AccountField)									AS Acc,
+         [%ReportRowID],
+         $(vL.ExtraMappingIntervals)From + ITERNO() - 1  	AS ExtraMapping
+         WHILE $(vL.ExtraMappingIntervals)From + ITERNO() - 1 <= $(vL.ExtraMappingIntervals)To;
+      LOAD
+          $(vL.ExtraMappingIntervals)From,
+          $(vL.ExtraMappingIntervals)To,
+          $(vL.AccountField),
+          [%ReportRowID]
+      RESIDENT clsp_$(vL.SheetName)_costcenters_interval
+      WHERE [isText]=0; //Get only the numeric intervals
+      ;
+      
+       CONCATENATE(clsp_$(vL.SheetName)_costcenters)
+       LOAD
+       [%ReportRowID]					AS [%ReportRowID],
+       $(vL.AccountField)				AS Acc,
+       $(vL.ExtraMappingIntervals)From	AS ExtraMapping
+       RESIDENT clsp_$(vL.SheetName)_costcenters_interval
+       WHERE [isText]=1; //Adding the text values
+       
+
+      
+DROP TABLE clsp_$(vL.SheetName)_costcenters_interval;
+
+//Get all unique values from the transaction table to make sure we only create values that exist i the transaction table
+       map_ExtraMappingExists:
+       MAPPING
+       LOAD DISTINCT
+       $(vL.ExtraMappingIntervals),
+       1
+       RESIDENT $(vL.TransactionTable)
+       ;
+       
+//Create extra rows for all possible combinations (where they exist in the transaction table)
+       LEFT JOIN(clsp_$(vL.SheetName))
+       LOAD DISTINCT
+       //JoinKey=================================================================================
+       [Acc]							AS $(vL.AccountField),
+       [%ReportRowID],
+       //Dimensions=============================================================================
+       [Acc]&'|'&[ExtraMapping] 		AS [tmp_FinanceReportID], //The account plus the extra mapping table
+       [ExtraMapping]					AS [ExtraMapping]
+       //Measures================================================================================
+       RESIDENT clsp_$(vL.SheetName)_costcenters
+       WHERE APPLYMAP('map_ExtraMappingExists',[ExtraMapping],0)=1
+       ;
+
+UNMAP map_ExtraMappingExists;
+      
+DROP TABLE clsp_$(vL.SheetName)_costcenters;
+
+RENAME TABLE clsp_$(vL.SheetName) TO tmp_clsp_$(vL.SheetName);
+ 
+       NOCONCATENATE
+       clsp_$(vL.SheetName):
+       LOAD
+       *,
+       IF(ISNULL([tmp_FinanceReportID]),$(vL.AccountField), [tmp_FinanceReportID]) AS [%FinanceReportID]
+       RESIDENT tmp_clsp_$(vL.SheetName)
+       WHERE NOT ISNULL($(vL.AccountField));
+
+DROP FIELD ExtraMapping, [tmp_FinanceReportID];
+
+DROP TABLE tmp_clsp_$(vL.SheetName);
+
+
+
+       map_FinanceKey:
+	   MAPPING
+       LOAD
+       	[%FinanceReportID],
+        [%FinanceReportID]
+       RESIDENT clsp_$(vL.SheetName)
+       ;
+
+//Adding the new key to the transaction table with an applymap 
+//Using applymap instead of join to be able to set an alternative value
+TRACE ***** Add new key to transaction table *****;
+
+RENAME TABLE $(vL.TransactionTable) TO tmp_$(vL.TransactionTable);
+       NOCONCATENATE
+       $(vL.TransactionTable):
+       LOAD
+       *,
+       APPLYMAP('map_FinanceKey',$(vL.AccountField)&'|'&$(vL.ExtraMappingIntervals),$(vL.AccountField))	AS [%FinanceReportID]
+       RESIDENT tmp_$(vL.TransactionTable)
+       ;
+       
+UNMAP map_FinanceKey;
+
+DROP TABLE tmp_$(vL.TransactionTable);
+DROP FIELD '$(vL.AccountField)' FROM clsp_$(vL.SheetName);
+
+ELSE
+
+TRACE ***** Add new key to transaction table *****;
+
+RENAME TABLE $(vL.TransactionTable) TO tmp_$(vL.TransactionTable);
+ 	
+       NOCONCATENATE
+       $(vL.TransactionTable):
+       LOAD
+       *,
+       $(vL.AccountField)	AS [%FinanceReportID]
+       RESIDENT tmp_$(vL.TransactionTable)
+       ;
+
+DROP TABLE tmp_$(vL.TransactionTable);
+
+TRACE ***** Add new key to report table *****;
+
+RENAME TABLE clsp_$(vL.SheetName) TO tmp_clsp_$(vL.SheetName);
+		
+        NOCONCATENATE
+        clsp_$(vL.SheetName):
+		LOAD
+        	*,
+            $(vL.AccountField) AS [%FinanceReportID]
+        RESIDENT tmp_clsp_$(vL.SheetName);
+        
+DROP TABLE tmp_clsp_$(vL.SheetName);
+DROP FIELD '$(vL.AccountField)' FROM clsp_$(vL.SheetName);
+
+END IF
+
+DROP FIELD [NOEXTRAFIELD];
+
+
+
+//Adding total rows to the report setup
+//this includes logic for running totals and empty rows
+//Empty rows are connected to all other rows and will always display (this can be changed by altering the logic below)
+TRACE ****** Total Rows ******;
+
+      clsp_TotalRows:
+      LOAD
+        //Grain=====================================================================================
+        [%ReportRowID]						AS [totalRowIntervalMatchKey],
+        //Dimension=================================================================================
+        RowType								AS [rowType],
+
+        IF([RowType] <> 'Regular', 
+        	PEEK([RegularMinRow]),
+            IF([RowType] <> PREVIOUS([RowType]), 
+            [%ReportRowID], 
+            PEEK([RegularMinRow]))) 		AS [RegularMinRow],
+        IF([RowType] = 'RunningTotal', -1, 
+        	IF([RowType] <> 'Regular', 
+            PEEK([tmp_RunningSubtotalMinRow]), 
+            	IF(PEEK([tmp_RunningSubtotalMinRow]) = -1 OR ROWNO() = 1, 
+                [%ReportRowID], PEEK([tmp_RunningSubtotalMinRow]))
+                )) 							AS [tmp_RunningSubtotalMinRow],
+       IF(LEFT([RowType],7) = 'Regular', 
+       	[%ReportRowID],
+
+        PEEK(RegularMaxRow)) 				AS [RegularMaxRow],
+        $(vL.MinRowNumber) 					AS [MinRowNumber],
+        $(vL.MaxRowNumber) 					AS [MaxRowNumber],
+        [RowFromOverride]					AS [RowFromOverride],
+        [RowToOverride]						AS [RowToOverride]
+        //Measure===================================================================================
+       RESIDENT clsp_importData_$(vL.SheetName)
+       ORDER BY [%ReportRowID]
+       ;
+       
+      LEFT JOIN (clsp_TotalRows)
+      LOAD DISTINCT
+        //Joinkey=====================================================================================
+        [totalRowIntervalMatchKey]            AS [totalRowIntervalMatchKey],   
+        //Dimensions==================================================================================
+        IF(ISNULL(PEEK([totalRowIntervalMatchKey])),
+            [RegularMinRow],
+            PEEK([totalRowIntervalMatchKey])) AS [MinRunningSubTotal]
+        //Measures====================================================================================
+      RESIDENT clsp_TotalRows
+      WHERE rowType='RunningSubTotal' OR rowType='RunningTotal'
+      ;
+      
+
+      LEFT JOIN (clsp_TotalRows)
+      LOAD DISTINCT
+        //Joinkey=====================================================================================
+        [totalRowIntervalMatchKey]          AS [totalRowIntervalMatchKey],    
+        //Dimensions==================================================================================
+      IF(NOT ISNULL([MinRunningSubTotal]),
+        IF([MinRunningSubTotal]>IF(ISNULL([tmp_RunningSubtotalMinRow]),0,[tmp_RunningSubtotalMinRow]),
+            [MinRunningSubTotal],
+            [tmp_RunningSubtotalMinRow]
+            ),[tmp_RunningSubtotalMinRow])  AS [RunningSubtotalMinRow]
+        //Measures====================================================================================
+      RESIDENT clsp_TotalRows
+      WHERE [rowType]='RunningSubTotal'
+      ;
+
+DROP FIELDS tmp_RunningSubtotalMinRow, MinRunningSubTotal;
+
+
+       clsp_TotalIntervals:
+       LOAD
+         //Grain=====================================================================================
+        [totalRowIntervalMatchKey],
+         //Dimension=================================================================================
+         IF(ISNULL([RowFromOverride]),
+           IF([rowType]='SubTotal',
+              [RegularMinRow],
+              IF([rowType]='RunningSubTotal',
+              [RunningSubtotalMinRow],
+             [MinRowNumber])),
+             [RowFromOverride])				AS [RowFrom],
+		
+		IF(ISNULL([RowToOverride]),
+       		IF([rowType]='EmptyRow',
+       		[MaxRowNumber],
+           [RegularMaxRow]),
+           [RowToOverride])                AS [RowTo]
+        //Measure===================================================================================
+      RESIDENT clsp_TotalRows
+      WHERE NOT MATCH([rowType], 'Regular')
+      ;
+           
+DROP TABLE clsp_TotalRows;
+
+	   clsp_TotalIntervalMatch:
+       NOCONCATENATE
+       INTERVALMATCH([%ReportRowID])
+       LOAD
+       [RowFrom],
+       [RowTo]
+       RESIDENT clsp_TotalIntervals;
+       
+	   LEFT JOIN(clsp_TotalIntervalMatch)
+       LOAD
+       *
+       RESIDENT clsp_TotalIntervals;
+
+DROP TABLE clsp_TotalIntervals;
+       
+       LEFT JOIN(clsp_TotalIntervalMatch)
+       LOAD
+       *
+       RESIDENT clsp_$(vL.SheetName);
+       
+
+       CONCATENATE(clsp_$(vL.SheetName))
+       LOAD DISTINCT
+       [totalRowIntervalMatchKey]	AS [%ReportRowID],
+       [rowNumber],
+       [%FinanceReportID]
+       RESIDENT clsp_TotalIntervalMatch
+       WHERE NOT ISNULL([%FinanceReportID])
+       ;
+   
+   
+DROP TABLE clsp_TotalIntervalMatch;
+
+//Adding all the data from the original Excel-template (such as RowNumFormat, RowGroup, ReportRow etc.
+	  JOIN(clsp_$(vL.SheetName))
+      LOAD
+      	*
+      RESIDENT clsp_importData_$(vL.SheetName);
+      
+
+DROP TABLE clsp_importData_$(vL.SheetName);
+
+TRACE ***** Rename Fields ******;
+//Renaming all the fields to include a prefix
+
+FOR i = 1 to NoOfFields('clsp_$(vL.SheetName)')
+
+Fields:
+LOAD
+  FieldName($(i),'clsp_$(vL.SheetName)') as FieldName
+AutoGenerate 1
+;
+
+NEXT i
+
+//Adding the prefix to make sure the names are unique when using multiple reports
+//(If custom names are needed an alternative mapping table should be used here. Do not change in other places in the script!)
+map_RenameFields_$(vL.SheetName):
+MAPPING
+LOAD DISTINCT
+	FieldName,
+    '$(vL.SheetName)'&'_' &FieldName
+RESIDENT Fields;
+
+DROP TABLE Fields;
+RENAME FIELDS USING map_RenameFields_$(vL.SheetName);
+
+UNMAP map_RenameFields_$(vL.SheetName);
+
+NEXT clsp_FinceReportRow
+
+DROP TABLE clsp_FinanceOptions;
+
+END SUB
+
+
+
+//CALL ACCOUNT MAPPING: 
+
+/************************************
+There is typically no need to change these settings.
+Change the data connection path to point to the files and make your settings in the first tab of the Excel-file.
+************************************/
+clsp_FinanceReport_Options:
+LOAD
+   'FILEPATH'			AS clsp_FilePath, 
+   'VIZLIBFILE.xlsx'		AS clsp_FileName
+AUTOGENERATE 1;
+        
+CALL clsp_FinanceReport;  
