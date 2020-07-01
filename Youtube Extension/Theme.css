@@ -1,0 +1,56 @@
+// This is one of the files used when using the youtube extension in Qlik Sense
+// Please contact Gema Magana if you have any questions
+
+
+.qv-object-barchart, .qv-object-combochart, .qv-object-waterfallchart, .qv-object-linechart, .qv-object-table {
+border-radius: 1px;
+box-shadow: 0 0 0.5em rgba(0, 0, 0, 0.16);
+background: #F0F0F0;
+padding: 0.5em;
+border-radius: .5em;
+margin: .5em auto;
+height: calc(100% - 1em);
+font-family: Century-Gothic, Sans-Serif
+}
+
+.qv-object * {
+    font-family: Century-Gothic, Sans-Serif;	
+}
+
+.qvt-sheet{
+background-image: url("Imagename.png");
+background-position: absolute;
+background-size: 100% 100%
+} 
+
+
+
+
+
+.sheet-grid .qv-gridcell {
+    border: 0px solid #EEEEEE;
+
+	
+ }
+
+
+.qv-panel-sheet .sheet-title-container {
+    padding-top: ;
+    padding-bottom: ;
+    height: ;
+    /*width: 80%;*/
+}
+
+#sheet-title.sheet-grid:after{
+	content: " ";
+    display: block;
+    height: 25px;
+    width: 20%;
+    background-image: ;
+    background-repeat: no-repeat;
+    background-size: contain;
+    background-position: right;
+    margin-right: 0px;
+}
+
+
