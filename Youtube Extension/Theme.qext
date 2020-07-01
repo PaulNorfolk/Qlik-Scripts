@@ -1,0 +1,11 @@
+// This is one of the files used when using the youtube extension in Qlik Sense
+// Please contact Gema Magana if you have any questions
+
+
+{
+  "name": "Name Example",
+  "description": "Theme Description",
+  "type": "theme",
+  "version": "1.0.0"
+  
+}
