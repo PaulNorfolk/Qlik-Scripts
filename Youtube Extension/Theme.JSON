@@ -1,0 +1,149 @@
+// This is one of the files used when using the youtube extension in Qlik Sense
+// Please contact Gema Magana if you have any questions
+
+
+{
+  "_inherit": true,
+  "_variables": {
+    "@TitleSize": "16px",
+    "@SubtitleSize": "15px",
+    "@TextSize": "12px",
+    "@FooterSize": "10px",
+    "@TitleColor": "#154565",
+    "@SubtitleColor": "#888888",
+    "@TextColor": "#888888",
+    "@FooterColor": "#888888",
+    "@BackgroundColor": "#ffffff", 
+    "@AxisMajorColor": "#ffffff",
+    "@AxisMinorColor": "#ffffff"
+    
+  },
+  "customStyles": [
+    {
+      "cssRef": "theme.css",
+      "classRef": "sense-theme"
+    }
+  ],
+  "color": "@TextColor",
+  "fontSize": "@TextSize",
+  "backgroundColor": "@BackgroundColor",
+  "dataColors": {
+    "primaryColor": "#00afb1",
+    "othersColor": "#154565",
+    "errorColor": "#CC4000",
+    "nullColor": "#CCCCCC"
+  },
+  "object": {
+    "title": {
+      "main": {
+        "color": "@TitleColor",
+        "fontSize": "@TitleSize"
+      },
+      "subTitle": {
+        "color": "@SubtitleColor",
+        "fontSize": "@SubtitleSize"
+      },
+      "footer": {
+        "color": "@FooterColor",
+        "fontSize": "@FooterSize",
+        "backgroundColor": "#DCDCDC"
+      }
+    },
+    "label": {
+      "name": {
+        "color": "@TextColor",
+        "fontSize": "@TextSize"
+      },
+      "value": {
+        "color": "@TextColor",
+        "fontSize": "@TextSize"
+      }
+    },
+    "axis": {
+      "title": {
+        "color": "@TextColor",
+        "fontSize": "@TextSize"
+      },
+      "label": {
+        "name": {
+          "color": "@TextColor",
+          "fontSize": "@TextSize"
+        }
+      },
+      "line": {
+        "major": {
+          "color": "@AxisMajorColor"
+        },
+        "minor": {
+          "color": "@AxisMinorColor"
+        }
+      }
+    },
+    "grid": {
+      "line": {
+        "highContrast": {
+          "color": "#eeeeee"
+        },
+        "major": {
+          "color": "#eeeeee"
+        },
+        "minor": {
+          "color": "#eeeeee"
+        }
+      }
+    },
+    "referenceLine": {
+      "label": {
+        "name": {
+          "color": "@TextColor",
+          "fontSize": "@TextSize"
+        }
+      },
+      "outOfBounds": {
+        "color": "@TextColor",
+        "backgroundColor": "#DCDCDC",
+        "fontSize": "@TextSize"
+      }
+    },
+    "legend": {
+      "title": {
+        "color": "@TextColor",
+        "fontSize": "@TextSize"
+      },
+      "label": {
+        "color": "@TextColor",
+        "fontSize": "@TextSize"
+      }
+    }
+  },
+  "palettes": {
+    "data": [
+      {
+        "name": "ClearPeaks Palette",
+        "translation": "New dimension colors description",
+        "propertyValue": "4n7tav",
+        "type": "row",
+        "scale": [
+          "#154464",
+          "#00AFB1",
+          "#2F6E9A",
+          "#B0D9DB"
+        ]
+      }
+    ],
+    "ui": []
+  },
+  "scales": [
+    {
+      "name": "New measure colors",
+      "translation": "New measure colors description",
+      "type": "class",
+      "propertyValue": "kaqsrg",
+      "scale": [
+        "#00afb1",
+        "#154464",
+        "#2F6E9A"
+      ]
+    }
+  ]
+}
