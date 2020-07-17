@@ -1,0 +1,70 @@
+//This is a script to generate a master calendar in QLiksense. Please contact Vanessa McIntyre or Paul Norfolk if you have any questions
+
+
+//generic_message_log
+
+Date(floor([run_time]),'DD-MMM-YYYY') AS [Date]:
+
+LOAD
+
+[file_id] AS [m_file_id],
+
+Date([run_time],'DD-MMM-YYYY hh:mm:ss') AS [Date],
+
+[filename] AS [m_filename],
+
+[run_time] AS [m_run_time];
+
+SELECT "file_id",
+
+"filename",
+
+"run_time";
+
+FROM "ftp_notifier"."generic_message_log";
+
+//Master Calendar
+
+
+
+LET varMinDate = NUM(PEEK('Date',0,'generic_message_log'));
+
+LET varMaxDate = NUM(PEEK('Date',-1,'generic_message_log'));
+
+TempCalendar:
+
+LOAD
+
+DATE($(varMinDate) + ROWNO() -1) AS TempDate
+
+AUTOGENERATE $(varMaxDate) - $(varMinDate) +1;
+
+// Create the Master Calendar
+
+MasterCalendar:
+
+LOAD
+
+DATE(TempDate, 'DD-MMM-YYYY hh:mm:ss') AS Date,
+
+WEEK(TempDate) AS Week,
+
+YEAR(TempDate) AS Year,
+
+MONTH(TempDate) AS Month,
+
+DAY(TempDate) AS Day,
+
+DATE(MONTHSTART(TempDate), 'MMM-YYYY') AS MonthYear,
+
+'Q' & CEIL(MONTH(TempDate)/3)&'-'&YEAR(TempDate) AS QuarterYear,
+
+'W' & WEEK(TempDate)&'-'&YEAR(TempDate) AS WeekYear,
+
+WEEKDAY(TempDate) AS WeekDay
+
+RESIDENT TempCalendar
+
+Order BY TempDate ASC;
+
+DROP FIELD TempDate;
