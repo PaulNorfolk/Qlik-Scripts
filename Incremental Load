@@ -1,0 +1,56 @@
+// The below code is an example of using an incremental load of data 
+// An initial load is done into a QVD, and then secondly an incremental load is completed by filtering on the last update date. 
+
+
+Initial QVD load: 
+
+[fact_finance]:
+LOAD
+    primary_key,
+    category,
+    brand,
+    net_sales,
+    last_update
+FROM [lib://Source Data/fact_finance.xlsx]
+(ooxml, embedded labels, table is InitialQVD);
+STORE fact_finance INTO [lib://Output Data/fact_finance.qvd];
+DROP TABLE fact_finance;
+
+Incremental load:
+
+[fact_finance_incremental]:
+LOAD
+    primary_key,
+    category,
+    brand,
+    net_sales,
+    last_update
+FROM [lib://Source Data/fact_finance.xlsx]
+(ooxml, embedded labels, table is ChangedData) WHERE last_update > '23/06/2018';
+
+Concatenate 
+LOAD 
+    primary_key,
+    category,
+    brand,
+    net_sales,
+    last_update
+FROM [lib://Output Data/fact_finance.qvd] (qvd) where not exists (primary_key);
+
+
+// Inner join used for deletion 
+Inner Join 
+LOAD primary_key
+FROM [lib://Source Data/fact_finance.xlsx] (ooxml, embedded labels, table is ChangedData);
+
+STORE [fact_finance_incremental] into [lib://Output Data/fact_finance.qvd];
+DROP TABLE [fact_finance_incremental];
+
+[fact_finance]:
+LOAD
+    primary_key,
+    category,
+    brand,
+    net_sales,
+    last_update
+From [lib://Output Data/fact_finance.qvd] (qvd);
