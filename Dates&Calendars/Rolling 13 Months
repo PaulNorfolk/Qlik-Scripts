@@ -1,0 +1,4 @@
+// Add this when transforming a table
+// This determines if the a date (InceptionDate used here) is in the last rolling 13 months  
+
+If(InceptionDate >monthstart(addmonths(today(),-12)) and InceptionDate<=today(),1,0) as Rolling 13M
