@@ -1,0 +1,7 @@
+// Flags a date (InceptionDate used here) if it is in the Year-To-Date
+
+YTD: if(if(Month(date(floor(InceptionDate)))<=3,(Year(date(floor(InceptionDate)))-1)
+&’-’&(Year(date(floor(InceptionDate))),(Year(date(floor(Inception)))&’-’&
+(Year(Date(floor(InceptionDate)))+1))=if(Month(((today())))<=3,(Year(((today())))-1)
+&’-’&(Year(((today())))),(Year(((today())))
+&’_’&(Year(((today())))+1)),1,0) as [YTD Flag]
