@@ -1,0 +1,3 @@
+// Code for simple transformation of date format
+
+Date(MonthStart(InceptionDate),’MMMM YYYY’) as MonthYear
