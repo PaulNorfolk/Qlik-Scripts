@@ -1,0 +1,10 @@
+### The below code can be used to select an option from a variable. For example if the variable vOption=2, then this will output the second option (vOption2).
+### This can be useful for selecting alternate measure/titles for charts or for a changeable KPI (where vOption is set through a button or other action by the user)
+
+pick(WildMatch(vOption,1,2,3,4,5),
+$(vOption1),
+$(vOption2),
+$(vOption3),
+$(vOption4),
+$(vOption5)
+)
